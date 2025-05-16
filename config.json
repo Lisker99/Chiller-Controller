@@ -1,0 +1,14 @@
+{
+  "mqtt_broker": "192.168.68.68",
+  "mqtt_port": 1883,
+  "mqtt_topic": "chiller/ahu/call",
+  "gpio_pump": 17,
+  "gpio_chiller": 27,
+  "call_timeout_sec": 600,
+  "sensor_ids": {
+    "Supply": "3de104574e48",
+    "Return": "3de104577fce",
+    "Ambient": "3de10457bb91"
+  },
+  "differential_f": 3.0
+}
