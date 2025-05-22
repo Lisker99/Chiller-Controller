@@ -1,14 +1,46 @@
 {
-  "mqtt_broker": "192.168.68.68",
-  "mqtt_port": 1883,
-  "mqtt_topic": "chiller/ahu/call",
-  "gpio_pump": 17,
-  "gpio_chiller": 27,
-  "call_timeout_sec": 600,
-  "sensor_ids": {
-    "Supply": "3de104574e48",
-    "Return": "3de104577fce",
-    "Ambient": "3de10457bb91"
+  "mqtt_settings": {
+    "broker_address": "homeassistant.local",
+    "broker_port": 1883,
+    "username": "mqtt_user",
+    "password": "securepassword",
+    "client_id": "chiller_controller_pi",
+    "base_topic": "chiller",
+    "home_assistant_discovery_prefix": "homeassistant",
+    "external_ahu_call_topic": "chiller/external_ahu/call"
   },
-  "differential_f": 3.0
+  "gpio_settings": {
+    "pump_pin": 17,
+    "condenser_pin": 27,
+    "relay_active_high": true
+  },
+  "operational_parameters": {
+    "fallback_setpoint_f": 45.0,
+    "initial_differential_f": 3.0,
+    "condenser_min_off_time_sec": 120,
+    "ahu_call_timeout_sec": 300,
+    "pump_post_purge_duration_sec": 60
+  },
+  "timing_intervals": {
+    "controller_loop_interval_sec": 2,
+    "sensor_poll_interval_sec": 5,
+    "mqtt_status_publish_interval_sec": 60,
+    "mqtt_failsafe_timeout_sec": 75
+  },
+  "temperature_sensors": {
+    "ids": {
+      "supply": "28-3de104574e48",
+      "return": "28-3de104577fce",
+      "ambient": "28-3de10457bb91"
+    },
+    "friendly_names": {
+      "supply": "Chiller Supply Temperature",
+      "return": "Chiller Return Temperature",
+      "ambient": "Outdoor Ambient Temperature"
+    },
+    "critical_sensors": ["supply"]
+  },
+  "general_settings": {
+    "debug_logging_enabled": true
+  }
 }

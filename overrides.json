@@ -1,1 +1,5 @@
-{"manual_pump": null, "manual_chiller": null, "manual_cooling": true}
+{
+  "manual_pump_override": null,
+  "manual_chiller_override": null,
+  "manual_cooling_override": "on"
+}
