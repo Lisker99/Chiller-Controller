@@ -1,3 +1,4 @@
 {
-  "differential": 1.0
+  "differential": 3.0,
+  "ambient_lockout_setpoint": 45.0
 }

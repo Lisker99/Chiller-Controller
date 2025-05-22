@@ -10,7 +10,8 @@ from config import (
     STATUS_TOPIC_BASE,
     TEMP_TOPIC_BASE,
     SENSOR_IDS,
-    SENSOR_FRIENDLY_NAMES
+    SENSOR_FRIENDLY_NAMES,
+    SENSOR_POLL_INTERVAL_SEC # Used for expire_after
 )
 
 DEVICE_INFO = {
@@ -18,30 +19,21 @@ DEVICE_INFO = {
     "name": "DIY Chiller Controller",
     "manufacturer": "DIY Solutions",
     "model": "RPi Chiller Control v1.0",
-    "sw_version": "0.1.0" # You can update this as your software evolves
+    "sw_version": "0.1.0" # Update as your software evolves (e.g., "0.2.0" after this feature)
 }
 
 class DiscoveryPublisher:
     def __init__(self, mqtt_client):
-        """
-        :param mqtt_client: paho.mqtt.client.Client instance
-        """
         self.client = mqtt_client
         self.debug = DEBUG_LOGGING_ENABLED
         self.discovery_prefix = HA_DISCOVERY_PREFIX.rstrip('/')
         self.base_topic_prefix = MQTT_BASE_TOPIC.rstrip('/')
 
     def _publish_config(self, entity_type, component_name, config_payload):
-        """
-        Helper to publish a discovery message.
-        :param entity_type: e.g., "sensor", "number", "select", "binary_sensor", "button"
-        :param component_name: A unique name for this component, e.g., "supply_temp", "setpoint"
-        :param config_payload: The JSON payload for the discovery message.
-        """
-        # Ensure common fields are present
         config_payload["availability_topic"] = TOPIC_AVAILABILITY
+        # Ensure unique_id uses base_topic_prefix for global uniqueness if multiple chillers on one HA
         config_payload["unique_id"] = f"{self.base_topic_prefix}_{component_name}"
-        config_payload["device"] = DEVICE_INFO # Add device information
+        config_payload["device"] = DEVICE_INFO 
 
         topic = f"{self.discovery_prefix}/{entity_type}/{self.base_topic_prefix}/{component_name}/config"
         payload_json = json.dumps(config_payload)
@@ -50,72 +42,69 @@ class DiscoveryPublisher:
             print(f"[DISCOVERY] Published to {topic}: {payload_json}")
 
     def publish_all(self):
-        """Publish all discovery configurations."""
         if self.debug:
             print("[DISCOVERY] Publishing all Home Assistant discovery messages...")
 
         self.publish_temperature_sensors()
         self.publish_setpoint_number()
         self.publish_differential_number()
+        self.publish_ambient_lockout_number() # <-- NEW CALL
         self.publish_override_selects()
-        self.publish_status_binary_sensors()
+        self.publish_status_binary_sensors() # Will add new lockout status here
         self.publish_resend_discovery_button()
 
         if self.debug:
             print("[DISCOVERY] All discovery messages published.")
 
     def publish_temperature_sensors(self):
-        """Publish discovery for all configured temperature sensors."""
         if not SENSOR_IDS:
             if self.debug:
                 print("[DISCOVERY] No sensor IDs configured. Skipping temperature sensor discovery.")
             return
 
         for internal_key, sensor_id_val in SENSOR_IDS.items():
-            if not sensor_id_val: # Skip if sensor ID is empty
+            if not sensor_id_val: 
                 if self.debug:
                     print(f"[DISCOVERY] Sensor ID for '{internal_key}' is empty. Skipping discovery.")
                 continue
 
             friendly_name = SENSOR_FRIENDLY_NAMES.get(internal_key, internal_key.replace("_", " ").title())
-            component_name = f"{internal_key}_temp" # e.g., supply_temp
+            component_name = f"{internal_key}_temp" 
 
             payload = {
                 "name": friendly_name,
-                "state_topic": f"{TEMP_TOPIC_BASE}/{internal_key}", # e.g., chiller/sensor/supply
+                "state_topic": f"{TEMP_TOPIC_BASE}/{internal_key}", 
                 "unit_of_measurement": "°F",
                 "device_class": "temperature",
                 "state_class": "measurement",
-                "value_template": "{{ value | float(default=None) }}", # Ensure it's treated as a float
-                "expire_after": int(SENSOR_POLL_INTERVAL_SEC * 3 + 5) if 'SENSOR_POLL_INTERVAL_SEC' in globals() else 30 # Mark unavailable if no updates
+                "value_template": "{{ value | float(default=None) }}", 
+                "expire_after": int(SENSOR_POLL_INTERVAL_SEC * 3 + 5) 
             }
             self._publish_config("sensor", component_name, payload)
 
     def publish_setpoint_number(self):
-        """Publish discovery for the setpoint control."""
         component_name = "setpoint"
         payload = {
             "name": "Chiller Target Setpoint",
             "state_topic": f"{CONTROL_TOPIC_BASE}/setpoint",
-            "command_topic": f"{CONTROL_TOPIC_BASE}/setpoint/set", # Separate command topic
-            "min": 30,  # °F
-            "max": 70,  # °F
+            "command_topic": f"{CONTROL_TOPIC_BASE}/setpoint/set", 
+            "min": 30,  
+            "max": 70,  
             "step": 0.5,
             "unit_of_measurement": "°F",
-            "mode": "box", # Or "slider"
+            "mode": "box", 
             "icon": "mdi:thermometer-lines"
         }
         self._publish_config("number", component_name, payload)
 
     def publish_differential_number(self):
-        """Publish discovery for the differential control."""
         component_name = "differential"
         payload = {
             "name": "Chiller Temperature Differential",
             "state_topic": f"{CONTROL_TOPIC_BASE}/differential",
-            "command_topic": f"{CONTROL_TOPIC_BASE}/differential/set", # Separate command topic
-            "min": 1.0, # °F
-            "max": 10.0, # °F
+            "command_topic": f"{CONTROL_TOPIC_BASE}/differential/set", 
+            "min": 1.0, 
+            "max": 10.0, 
             "step": 0.1,
             "unit_of_measurement": "°F",
             "mode": "box",
@@ -123,28 +112,41 @@ class DiscoveryPublisher:
         }
         self._publish_config("number", component_name, payload)
 
+    # <-- NEW METHOD for Ambient Lockout Setpoint -->
+    def publish_ambient_lockout_number(self):
+        """Publish discovery for the ambient temperature lockout setpoint control."""
+        component_name = "ambient_lockout_setpoint"
+        payload = {
+            "name": "Ambient Lockout Temperature",
+            "state_topic": f"{CONTROL_TOPIC_BASE}/ambient_lockout_setpoint",
+            "command_topic": f"{CONTROL_TOPIC_BASE}/ambient_lockout_setpoint/set",
+            "min": 30,  # °F - Allow setting very low to effectively disable
+            "max": 80,  # °F - Reasonable upper limit
+            "step": 1.0,
+            "unit_of_measurement": "°F",
+            "mode": "box", 
+            "icon": "mdi:account-lock-outline" # Icon suggesting environmental lockout
+        }
+        self._publish_config("number", component_name, payload)
+
     def publish_override_selects(self):
-        """Publish discovery for manual override selectors (pump, chiller, cooling)."""
-        # "chiller" is the common term, but internally we might use "condenser" for the pin.
-        # For HA UI, "Chiller Override" might be more intuitive than "Condenser Override".
         devices = {
             "pump": "Pump",
-            "chiller": "Chiller", # User-facing name for the condenser system
+            "chiller": "Chiller", 
             "cooling": "Cooling Call Simulation"
         }
         for internal_key, friendly_prefix in devices.items():
             component_name = f"{internal_key}_override"
             payload = {
                 "name": f"{friendly_prefix} Manual Override",
-                "state_topic": f"{CONTROL_TOPIC_BASE}/{internal_key}_override", # e.g. chiller/control/pump_override
-                "command_topic": f"{CONTROL_TOPIC_BASE}/{internal_key}_override/set", # e.g. chiller/control/pump_override/set
-                "options": ["auto", "on", "off"], # MQTT client will handle "clear" mapping to "auto"
+                "state_topic": f"{CONTROL_TOPIC_BASE}/{internal_key}_override", 
+                "command_topic": f"{CONTROL_TOPIC_BASE}/{internal_key}_override/set", 
+                "options": ["auto", "on", "off"], 
                 "icon": "mdi:tune" if internal_key != "cooling" else "mdi:snowflake-thermometer"
             }
             self._publish_config("select", component_name, payload)
 
     def publish_status_binary_sensors(self):
-        """Publish discovery for status indicators."""
         statuses = {
             "cooling_call_active": {
                 "name": "Chiller Cooling Call Active",
@@ -154,27 +156,40 @@ class DiscoveryPublisher:
             "pump_relay_status": {
                 "name": "Chiller Pump Relay Engaged",
                 "icon": "mdi:pump",
-                "topic_suffix": "pump_relay_state" # Actual state of the pump relay
+                "topic_suffix": "pump_relay_state" 
             },
             "condenser_relay_status": {
                 "name": "Chiller Condenser Relay Engaged",
                 "icon": "mdi:air-conditioner",
-                "topic_suffix": "condenser_relay_state" # Actual state of the condenser relay
+                "topic_suffix": "condenser_relay_state" 
             },
             "critical_sensor_fault": {
                 "name": "Chiller Critical Sensor Fault",
                 "icon": "mdi:alert-circle-outline",
-                "device_class": "problem", # This will show as "Problem Detected"
+                "device_class": "problem", 
                 "topic_suffix": "critical_sensor_fault"
+            },
+            # <-- NEW Binary Sensor for Ambient Lockout Status -->
+            "ambient_lockout_status": {
+                "name": "Chiller Ambient Lockout Active",
+                "icon": "mdi:weather-sunny-off", # Or mdi:cancel, mdi:block-helper
+                "device_class": "running", # Shows as "Running" / "Not Running". "Problem" could also work.
+                                           # If "Problem", ON means there is a problem (lockout is active).
+                                           # If "Running", ON means it IS running (i.e. lockout NOT active).
+                                           # Let's use "power" so ON means lockout is ON (active/powered).
+                "device_class": "power", # ON = Lockout is active (system is "powered" down by lockout)
+                                         # OFF = Lockout is not active (system can run normally)
+
+                "topic_suffix": "ambient_lockout_active"
             }
         }
 
         for component_name, details in statuses.items():
             payload = {
                 "name": details["name"],
-                "state_topic": f"{STATUS_TOPIC_BASE}/{details['topic_suffix']}", # e.g. chiller/status/cooling_call_active
-                "payload_on": "ON",  # The string we'll publish for ON state
-                "payload_off": "OFF", # The string we'll publish for OFF state
+                "state_topic": f"{STATUS_TOPIC_BASE}/{details['topic_suffix']}", 
+                "payload_on": "ON",  
+                "payload_off": "OFF", 
                 "icon": details.get("icon")
             }
             if "device_class" in details:
@@ -183,12 +198,11 @@ class DiscoveryPublisher:
 
 
     def publish_resend_discovery_button(self):
-        """Publish discovery for a button to resend discovery messages."""
         component_name = "resend_discovery"
         payload = {
             "name": "Chiller Resend HA Discovery",
             "command_topic": f"{CONTROL_TOPIC_BASE}/resend_discovery",
-            "payload_press": "PRESS", # The payload to send when pressed
+            "payload_press": "PRESS", 
             "icon": "mdi:refresh-auto"
         }
         self._publish_config("button", component_name, payload)

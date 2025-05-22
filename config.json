@@ -19,7 +19,10 @@
     "initial_differential_f": 3.0,
     "condenser_min_off_time_sec": 120,
     "ahu_call_timeout_sec": 300,
-    "pump_post_purge_duration_sec": 60
+    "pump_post_purge_duration_sec": 60,
+    "initial_ambient_lockout_setpoint_f": 65.0, 
+    "ambient_lockout_deadband_f": 2.0,          
+    "ambient_lockout_debounce_duration_sec": 900 
   },
   "timing_intervals": {
     "controller_loop_interval_sec": 2,
